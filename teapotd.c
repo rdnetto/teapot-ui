@@ -6,7 +6,6 @@
 #include <fcntl.h>
 #include <poll.h>
 #include <unistd.h>
-#include <time.h>
 
 
 #define CHK(cond, msg) if(cond){ perror("ERROR: " msg); return 1; }
@@ -14,7 +13,6 @@
 
 char *gpio_path(char *envvar);
 void set_led(char *path, bool value);
-long time_diff(struct timespec t0, struct timespec t1);
 
 
 int main(int argc, char **argv){
@@ -59,7 +57,6 @@ int main(int argc, char **argv){
     int ret, value;
     const int bufn = 4;
     char buf[bufn];
-    struct timespec lastChange, now;
     int button_fd = open(button_gpio, O_RDONLY);
     struct pollfd poll_data = {
         .fd = button_fd,
@@ -68,7 +65,6 @@ int main(int argc, char **argv){
     };
 
     CHK(button_fd == -1, "Unable to open GPIO_BUTTON");
-    CHK(clock_gettime(CLOCK_MONOTONIC_COARSE, &lastChange), "Reading clock");
 
     //main loop
     //POLLPRI indicates an interrupt (i.e. change in value)
@@ -84,18 +80,16 @@ int main(int argc, char **argv){
         if(poll_data.revents & POLLPRI){
             CHK(lseek(button_fd, 0, SEEK_SET) == -1, "Seeking GPIO_BUTTON");
             CHK((ret = read(button_fd, &buf, bufn)) == -1, "Reading GPIO_BUTTON");
-            CHK(clock_gettime(CLOCK_MONOTONIC_COARSE, &now), "Reading clock");
 
             buf[ret] = '\0';
             ret = atoi(buf);
 
-            //debouncing logic - only activate when button is pressed for the first time in 1 sec
-            if(ret && !value && time_diff(now, lastChange) > 1000){
+            //debouncing logic - only activate when button is pressed down
+            //blocking while the active LED is on automatically debounces the signal
+            if(ret && !value){
                 set_led(active_led, true);
                 sleep(3);
                 set_led(active_led, false);
-
-                lastChange = now;
             } //end if
 
             value = ret;
@@ -163,7 +157,3 @@ void set_led(char *path, bool value){
         perror("ERROR setting LED - close()");
 }
 
-/* Returns the difference in time, in ms. */
-inline long time_diff(const struct timespec t1, const struct timespec t0){
-    return 1000l * (t1.tv_sec - t0.tv_sec) + (t1.tv_nsec - t0.tv_nsec) / 1000000l;
-}
