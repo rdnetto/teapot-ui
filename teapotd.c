@@ -43,8 +43,12 @@ int main(int argc, char **argv){
         } //end if
     } //end if
 
-    if(background)
+    if(background){
+        //close stdin, but not stdout/stderr (prevents ssh from blocking for user input)
+        int null = open("/dev/null", O_RDWR);
+        CHK(dup2(null, STDIN_FILENO), "Failed to dup2 /dev/null");
         CHK(daemon(false, true), "Failed to daemonize");
+    } //end if
 
     //get sysfs paths as defined by environment variables (loaded from /etc/default/gpio by initscript)
     char *error_led   = gpio_path("GPIO_ERROR");
