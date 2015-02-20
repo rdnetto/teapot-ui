@@ -6,6 +6,9 @@
 #include <fcntl.h>
 #include <poll.h>
 #include <unistd.h>
+#include <sys/socket.h>
+#include <sys/types.h>
+#include <netdb.h>
 
 
 #define CHK(cond, msg) if(cond){ perror("ERROR: " msg); return 1; }
@@ -13,6 +16,7 @@
 
 char *gpio_path(char *envvar);
 void set_led(char *path, bool value);
+int set_timer(char*, char*);
 
 
 int main(int argc, char **argv){
@@ -46,9 +50,13 @@ int main(int argc, char **argv){
     char *error_led   = gpio_path("GPIO_ERROR");
     char *active_led  = gpio_path("GPIO_ACTIVE");
     char *button_gpio = gpio_path("GPIO_BUTTON");
+    char *notify_user = getenv("NOTIFY_USER");
+    char *notify_host = getenv("NOTIFY_HOST");
 
-    if(!error_led || !active_led || !button_gpio)
+    if(!error_led || !active_led || !button_gpio || !notify_user || !notify_host){
+        puts("ERROR: Undefined environment variable");
         return 1;
+    } //end if
 
     //turn off error LED now that we're running
     set_led(error_led, false);
@@ -88,8 +96,14 @@ int main(int argc, char **argv){
             //blocking while the active LED is on automatically debounces the signal
             if(ret && !value){
                 set_led(active_led, true);
+
+                if(set_timer(notify_host, notify_user))
+                    set_led(error_led, true);
+
                 sleep(3);
+
                 set_led(active_led, false);
+                set_led(error_led, false);
             } //end if
 
             value = ret;
@@ -157,3 +171,28 @@ void set_led(char *path, bool value){
         perror("ERROR setting LED - close()");
 }
 
+/* Sets the timer remotely. Called when user presses button.
+ * Returns 0 on success. */
+int set_timer(char* host, char *user){
+    struct addrinfo *res;
+    int ret = getaddrinfo(host, NULL, NULL, &res);
+
+    //quick check to make sure the host is available
+    if(ret){
+        printf("ERROR: resolving host: %s (%i)\n", gai_strerror(ret), ret);
+        return ret;
+    }else{
+        freeaddrinfo(res);
+    } //end if
+
+    //perform notification
+    char *fmt = "ssh -y -i /etc/dropbear/dropbear_ecdsa_host_key %s@%s \"DISPLAY=:0 xdg-open 'https://www.google.com.au/search?q=set+timer+5+min'\"";
+    char cmd[strlen(fmt) + strlen(user) + strlen(host)];
+    sprintf(cmd, fmt, user, host);
+    ret = system(cmd);
+
+    if(ret)
+        printf("ERROR: notifying user: %i\n", ret);
+
+    return ret;
+}
