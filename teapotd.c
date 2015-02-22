@@ -100,14 +100,9 @@ int main(int argc, char **argv){
             //blocking while the active LED is on automatically debounces the signal
             if(ret && !value){
                 set_led(active_led, true);
-
-                if(set_timer(notify_host, notify_user))
-                    set_led(error_led, true);
-
+                set_led(error_led, !!set_timer(notify_host, notify_user));
                 sleep(3);
-
                 set_led(active_led, false);
-                set_led(error_led, false);
             } //end if
 
             value = ret;
